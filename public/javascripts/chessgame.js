@@ -1,24 +1,21 @@
 const socket = io();
 const chess = new Chess();
 let boardElement = document.querySelector('.chessboard');
-
 let draggedPiece = null;
 let sourceSquare = null;
-let playerRole = null;
-let gameOver = false;
+let playerRole = 'w'; // Assume white starts
 
-// Piece Unicode Map
-const pieceSymbols = {
-    'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚',
-    'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'
+const getPieceUnicode = (piece) => {
+    const pieceMap = {
+        'p': '♙', 'r': '♖', 'n': '♘', 'b': '♗', 'q': '♕', 'k': '♔', // White pieces
+        'P': '♟', 'R': '♜', 'N': '♞', 'B': '♝', 'Q': '♛', 'K': '♚'  // Black pieces
+    };
+    return pieceMap[piece] || '';
 };
 
-// Render Chess Board
 const renderBoard = () => {
-    if (!boardElement) return;
-
-    const board = chess.board();
     boardElement.innerHTML = '';
+    const board = chess.board();
 
     board.forEach((row, rowIndex) => {
         row.forEach((square, colIndex) => {
@@ -30,11 +27,11 @@ const renderBoard = () => {
             if (square) {
                 const pieceElement = document.createElement('div');
                 pieceElement.classList.add('piece', square.color === 'w' ? 'white' : 'black');
-                pieceElement.innerText = pieceSymbols[square.type]; 
+                pieceElement.innerText = getPieceUnicode(square.type);
                 pieceElement.draggable = playerRole === square.color;
 
                 pieceElement.addEventListener('dragstart', (e) => {
-                    if (pieceElement.draggable && !gameOver) {
+                    if (pieceElement.draggable) {
                         draggedPiece = pieceElement;
                         sourceSquare = { row: rowIndex, col: colIndex };
                         e.dataTransfer.setData('text/plain', '');
@@ -45,9 +42,10 @@ const renderBoard = () => {
             }
 
             squareElement.addEventListener('dragover', (e) => e.preventDefault());
+
             squareElement.addEventListener('drop', (e) => {
                 e.preventDefault();
-                if (draggedPiece && !gameOver) {
+                if (draggedPiece) {
                     const targetSquare = { row: parseInt(squareElement.dataset.row), col: parseInt(squareElement.dataset.col) };
                     handleMove(sourceSquare, targetSquare);
                 }
@@ -56,60 +54,26 @@ const renderBoard = () => {
             boardElement.appendChild(squareElement);
         });
     });
-
-    // Flip board for black player
-    if (playerRole === 'b') {
-        boardElement.classList.add('flipped');
-    } else {
-        boardElement.classList.remove('flipped');
-    }
 };
 
-// Handle Move
-const handleMove = (source, target) => {
-    const move = {
-        from: `${String.fromCharCode(97 + source.col)}${8 - source.row}`,
-        to: `${String.fromCharCode(97 + target.col)}${8 - target.row}`
-    };
+const handleMove = (from, to) => {
+    const move = chess.move({
+        from: `${String.fromCharCode(97 + from.col)}${8 - from.row}`, 
+        to: `${String.fromCharCode(97 + to.col)}${8 - to.row}`
+    });
 
-    if (chess.move(move)) {
-        socket.emit('move', move);
+    if (move) {
         renderBoard();
+        socket.emit('move', move);
     } else {
-        console.log("Invalid move!");
+        console.log('Invalid move');
     }
 };
 
-// Handle Socket Events
-socket.on('playerRole', (role) => {
-    playerRole = role;
-    renderBoard();
-});
-
+// Receive move from the server
 socket.on('move', (move) => {
     chess.move(move);
     renderBoard();
 });
 
-socket.on('boardState', (fen) => {
-    chess.load(fen);
-    renderBoard();
-});
-
-socket.on('invalidMove', (move) => {
-    alert("Invalid move: " + move.from + " to " + move.to);
-});
-
-socket.on('gameOver', (message) => {
-    alert(message);
-    gameOver = true;
-});
-
-socket.on('resetGame', () => {
-    chess.reset();
-    gameOver = false;
-    renderBoard();
-});
-
-// Render board on initial load
-document.addEventListener('DOMContentLoaded', renderBoard);
+renderBoard();
